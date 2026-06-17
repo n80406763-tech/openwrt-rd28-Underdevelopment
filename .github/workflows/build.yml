@@ -67,7 +67,9 @@ jobs:
 
     - name: Build firmware
       working-directory: openwrt
-      run: make -j$(nproc) 2>&1 | tee /tmp/build.log; echo "Exit: $?"
+      run: |
+        make -j$(nproc) 2>&1 | tee /tmp/build.log
+        echo "Build exit code $?"
 
     - name: Check build results
       working-directory: openwrt
