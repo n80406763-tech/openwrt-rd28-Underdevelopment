@@ -1,0 +1,193 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+// Xiaomi RD28 (AX3000 NE) - Wi-Fi 6 Mesh Node
+// SoC: Qualcomm IPQ5018 (AP-MP03.3)
+// Extracted device tree: qcom,ipq5018-mp03.3
+// RAM: 256MB @ 0x40000000
+// NAND: 128MB Toshiba/KIOXIA
+// Radios: QCA5018 (2.4GHz, AHB) + QCN6122 (5GHz, PCIe)
+// WAN: eth0 (dp1, SGMII to internal GEPHY addr 7)
+// LAN: eth1 (dp2, SGMII to ESS switch)
+// LED: RGB via PWM (gpio0=blue, gpio1=orange)
+// BTN: Reset on gpio38 (active low)
+
+/dts-v1/;
+
+#include "qcom-ipq5018.dtsi"
+
+/ {
+	model = "Xiaomi RD28 (AX3000 NE)";
+	compatible = "xiaomi,rd28", "qcom,ipq5018-mp03.3", "qcom,ipq5018";
+
+	aliases {
+		serial0 = &blsp1_uart1;
+		ethernet0 = &dp1;
+		ethernet1 = &dp2;
+		label-mac-device = &dp1;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		bootargs-append = " ubi.mtd=rootfs root=mtd:ubi_rootfs rootfstype=squashfs";
+	};
+
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x40000000 0x0 0x10000000>;
+	};
+
+	leds {
+		compatible = "pwm-leds";
+
+		led-blue {
+			label = "blue:status";
+			pwms = <&pwm 0 50000>;
+			max-brightness = <255>;
+		};
+
+		led-orange {
+			label = "orange:status";
+			pwms = <&pwm 1 50000>;
+			max-brightness = <255>;
+		};
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-0 = <&button_pins>;
+		pinctrl-names = "default";
+
+		reset {
+			label = "reset";
+			linux,code = <KEY_RESTART>;
+			gpios = <&tlmm 38 GPIO_ACTIVE_LOW>;
+			linux,input-type = <EV_KEY>;
+			debounce-interval = <60>;
+		};
+	};
+};
+
+&blsp1_uart1 {
+	pinctrl-0 = <&uart1_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&tlmm {
+	uart1_pins: uart1-state {
+		pins = "gpio20", "gpio21";
+		function = "blsp0_uart0";
+		drive-strength = <8>;
+		bias-pull-down;
+	};
+
+	mdio0_pins: mdio0-state {
+		mdc {
+			pins = "gpio36";
+			function = "mdc";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+		mdio {
+			pins = "gpio37";
+			function = "mdio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+
+	pwm_pins: pwm-state {
+		pins = "gpio0", "gpio1";
+		function = "pwm";
+		drive-strength = <8>;
+	};
+
+	button_pins: button-state {
+		pins = "gpio38";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+	};
+
+	phy_led_pin: phy-led-state {
+		pins = "gpio46";
+		function = "led0";
+		drive-strength = <8>;
+		bias-pull-down;
+	};
+};
+
+&mdio0 {
+	status = "okay";
+	pinctrl-0 = <&mdio0_pins>;
+	pinctrl-names = "default";
+
+	ethphy0: ethernet-phy@7 {
+		compatible = "ethernet-phy-ieee802.3-c22";
+		reg = <7>;
+	};
+};
+
+&ess_switch {
+	status = "okay";
+};
+
+/* WAN: dp1 (eth0) - SGMII to internal GEPHY */
+&dp1 {
+	status = "okay";
+	phy-mode = "sgmii";
+	phy-handle = <&ethphy0>;
+	qcom,phy-mdio-addr = <7>;
+	qcom,link-poll = <1>;
+	qcom,mactype = <2>;
+	local-mac-address = [50 88 11 41 98 a7];
+	label = "wan";
+};
+
+/* LAN: dp2 (eth1) - ESS switch */
+&dp2 {
+	status = "okay";
+	phy-mode = "sgmii";
+	qcom,mactype = <2>;
+	local-mac-address = [50 88 11 c4 c9 f5];
+};
+
+&pwm {
+	pinctrl-0 = <&pwm_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&qpic_nand {
+	status = "okay";
+
+	nand@0 {
+		reg = <0>;
+		nand-ecc-strength = <4>;
+		nand-ecc-step-size = <512>;
+		nand-bus-width = <8>;
+
+		partitions {
+			compatible = "qcom,smem-part";
+		};
+	};
+};
+
+&usb3 {
+	status = "okay";
+};
+
+&usb3_dwc3 {
+	dr_mode = "host";
+};
+
+/* IPQ5018 internal 2.4GHz radio (QCA5018 via AHB) */
+&wifi0 {
+	status = "okay";
+	qcom,ath11k-calibration-variant = "Xiaomi-RD28";
+};
+
+/* QCN6122 5GHz radio (via PCIe) */
+&wifi1 {
+	status = "okay";
+	qcom,ath11k-calibration-variant = "Xiaomi-RD28";
+};
