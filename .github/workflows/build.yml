@@ -33,69 +33,17 @@ jobs:
     - name: Add Xiaomi RD28 device files
       run: |
         set -e
+
         DTS_DIR="openwrt/target/linux/qualcommax/files/arch/arm/boot/dts"
         mkdir -p "$DTS_DIR"
         cp qcom-ipq5018-rd28.dts "$DTS_DIR/"
         echo "DTS copied"
 
-        # Add device entry to ipq50xx.mk
-        IPQ50XX_MK="openwrt/target/linux/qualcommax/image/ipq50xx.mk"
-        if [ -f "$IPQ50XX_MK" ]; then
-          cat >> "$IPQ50XX_MK" << 'DEVEOF'
+        python3 patch_openwrt.py openwrt
 
-define Device/xiaomi_rd28
-  $(call Device/FitImage)
-  $(call Device/UbiFit)
-  DEVICE_VENDOR := Xiaomi
-  DEVICE_MODEL := RD28
-  DEVICE_VARIANT := AX3000 NE
-  SOC := ipq5018
-  DEVICE_DTS_CONFIG := config@mp03.3
-  BLOCKSIZE := 128k
-  PAGESIZE := 2048
-  KERNEL_IN_UBI := 1
-  DEVICE_PACKAGES := ath11k-firmware-ipq5018-qcn6122 kmod-ath11k-ahb kmod-ath11k-pci
-endef
-TARGET_DEVICES += xiaomi_rd28
-DEVEOF
-          echo "Device entry added to ipq50xx.mk"
-        else
-          echo "ERROR: ipq50xx.mk not found!"
-          ls openwrt/target/linux/qualcommax/image/
-          exit 1
-        fi
-
-        # Add network config
-        BOARD_DIR="openwrt/target/linux/qualcommax/ipq50xx/base-files/etc/board.d"
-        mkdir -p "$BOARD_DIR"
-        NETFILE="$BOARD_DIR/02_network"
-        if [ -f "$NETFILE" ]; then
-          # Add xiaomi,rd28 before the wildcard case
-          python3 - "$NETFILE" << 'PYEOF'
-        import sys, re
-        f = open(sys.argv[1]); c = f.read(); f.close()
-        insert = '\nxiaomi,rd28)\n\tucidef_set_interfaces_lan_wan "lan" "wan"\n\t;;\n'
-        c = re.sub(r'(\n\t\*\))', insert + r'\1', c, count=1)
-        f = open(sys.argv[1], 'w'); f.write(c); f.close()
-        print("Network config updated")
-PYEOF
-        fi
-
-        # Caldata extraction hotplug script
         HOTPLUG="openwrt/target/linux/qualcommax/ipq50xx/base-files/etc/hotplug.d/firmware"
         mkdir -p "$HOTPLUG"
-        cat > "$HOTPLUG/11-ath11k-caldata-rd28" << 'CALEOF'
-#!/bin/sh
-[ "$(board_name)" = "xiaomi,rd28" ] || exit 0
-ART=$(cat /proc/mtd | awk -F: '/0:ART/{print $1}')
-[ -n "$ART" ] || ART="mtd13"
-mkdir -p /lib/firmware/ath11k/IPQ5018/hw1.0
-dd if=/dev/${ART} of=/lib/firmware/ath11k/IPQ5018/hw1.0/caldata.bin \
-    bs=4096 skip=1 count=256 2>/dev/null
-mkdir -p /lib/firmware/ath11k/QCN6122/hw1.0
-dd if=/dev/${ART} of=/lib/firmware/ath11k/QCN6122/hw1.0/caldata.bin \
-    bs=4096 skip=40 count=256 2>/dev/null
-CALEOF
+        cp files/11-ath11k-caldata-rd28 "$HOTPLUG/"
         chmod +x "$HOTPLUG/11-ath11k-caldata-rd28"
         echo "Caldata script added"
 
@@ -108,33 +56,18 @@ CALEOF
     - name: Configure build
       working-directory: openwrt
       run: |
-        cat > .config << 'CONFIG_EOF'
-        CONFIG_TARGET_qualcommax=y
-        CONFIG_TARGET_qualcommax_ipq50xx=y
-        CONFIG_TARGET_MULTI_PROFILE=n
-        CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_xiaomi_rd28=y
-        CONFIG_TARGET_ROOTFS_SQUASHFS=y
-        CONFIG_PACKAGE_kmod-ath11k=y
-        CONFIG_PACKAGE_kmod-ath11k-ahb=y
-        CONFIG_PACKAGE_kmod-ath11k-pci=y
-        CONFIG_PACKAGE_ath11k-firmware-ipq5018-qcn6122=y
-        CONFIG_PACKAGE_ppp=y
-        CONFIG_PACKAGE_ppp-mod-pppoe=y
-        CONFIG_PACKAGE_nano=y
-        CONFIG_EOF
+        cp ../files/openwrt.config .config
         make defconfig
         echo "=== Target devices configured ==="
         grep "xiaomi_rd28" .config || echo "WARNING: xiaomi_rd28 not in config!"
 
-    - name: Build (download only first)
+    - name: Download sources
       working-directory: openwrt
-      run: make download -j$(nproc) 2>&1 | grep -E "ERROR|error" | head -20 || true
+      run: make download -j$(nproc) 2>&1 | grep -E "^ERROR" | head -20 || true
 
     - name: Build firmware
       working-directory: openwrt
-      run: |
-        make -j$(nproc) 2>&1 | tee /tmp/build.log
-        echo "Build exit code: $?"
+      run: make -j$(nproc) 2>&1 | tee /tmp/build.log; echo "Exit: $?"
 
     - name: Check build results
       working-directory: openwrt
@@ -143,7 +76,7 @@ CALEOF
         echo "=== Build output ==="
         ls -la bin/targets/qualcommax/ipq50xx/ 2>/dev/null || echo "No output directory"
         ls -la bin/targets/qualcommax/ipq50xx/*rd28* 2>/dev/null || echo "No RD28 images"
-        echo "=== Last build log lines ==="
+        echo "=== Last 30 log lines ==="
         tail -30 /tmp/build.log 2>/dev/null || true
 
     - name: Upload firmware images
@@ -156,7 +89,7 @@ CALEOF
           openwrt/bin/targets/qualcommax/ipq50xx/config.buildinfo
         retention-days: 30
 
-    - name: Upload build log (on failure)
+    - name: Upload build log on failure
       uses: actions/upload-artifact@v4
       if: failure()
       with:

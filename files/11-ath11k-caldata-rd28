@@ -1,0 +1,10 @@
+#!/bin/sh
+[ "$(board_name)" = "xiaomi,rd28" ] || exit 0
+ART=$(cat /proc/mtd | awk -F: '/0:ART/{print $1}')
+[ -n "$ART" ] || ART="mtd13"
+mkdir -p /lib/firmware/ath11k/IPQ5018/hw1.0
+dd if=/dev/${ART} of=/lib/firmware/ath11k/IPQ5018/hw1.0/caldata.bin \
+    bs=4096 skip=1 count=256 2>/dev/null
+mkdir -p /lib/firmware/ath11k/QCN6122/hw1.0
+dd if=/dev/${ART} of=/lib/firmware/ath11k/QCN6122/hw1.0/caldata.bin \
+    bs=4096 skip=40 count=256 2>/dev/null
