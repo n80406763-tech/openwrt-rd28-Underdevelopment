@@ -54,8 +54,7 @@ define Device/xiaomi_rd28
   BLOCKSIZE := 128k
   PAGESIZE := 2048
   KERNEL_IN_UBI := 1
-  DEVICE_PACKAGES := ath11k-firmware-ipq5018-qcn6122 \
-	kmod-ath11k-ahb kmod-ath11k-pci
+  DEVICE_PACKAGES := ath11k-firmware-ipq5018-qcn6122 kmod-ath11k-ahb kmod-ath11k-pci
 endef
 TARGET_DEVICES += xiaomi_rd28
 DEVEOF
